@@ -1,0 +1,100 @@
+import numpy as np
+import tensorflow as tf
+from tensorflow.keras.datasets import mnist
+from tensorflow.keras.models import Sequential, load_model
+from tensorflow.keras.layers import Conv2D, MaxPooling2D, Dense, Flatten, Dropout
+from tensorflow.keras.utils import to_categorical
+import matplotlib.pyplot as plt
+import cv2
+
+# ------------------ Data Preparation ------------------
+
+# Load the MNIST dataset (60,000 training and 10,000 test images)
+(x_train, y_train), (x_test, y_test) = mnist.load_data()
+
+# Reshape the images to include the channel dimension (28x28x1) and normalize pixel values
+x_train = x_train.reshape(-1, 28, 28, 1).astype("float32") / 255.0
+x_test  = x_test.reshape(-1, 28, 28, 1).astype("float32") / 255.0
+
+# Convert the labels into one-hot encoded vectors for 10 classes (digits 0-9)
+num_classes = 10
+y_train = to_categorical(y_train, num_classes)
+y_test  = to_categorical(y_test, num_classes)
+
+# ------------------ Building the Convolutional Neural Network ------------------
+model = Sequential([
+    # Convolutional layer: 32 filters of size 3x3 with ReLU activation
+    Conv2D(32, kernel_size=(3, 3), activation="relu", input_shape=(28, 28, 1)),
+    MaxPooling2D(pool_size=(2, 2)),
+    Dropout(0.25),
+    
+    # Second convolutional block: 64 filters
+    Conv2D(64, kernel_size=(3, 3), activation="relu"),
+    MaxPooling2D(pool_size=(2, 2)),
+    Dropout(0.25),
+    
+    # Flatten the tensor output from the convolutional block for the dense layers
+    Flatten(),
+    
+    # Fully connected layer with 128 neurons and ReLU activation
+    Dense(128, activation="relu"),
+    Dropout(0.5),
+    
+    # Output layer with softmax activation for multi-class prediction
+    Dense(num_classes, activation="softmax")
+])
+
+# Compile the CNN model with the Adam optimizer and categorical crossentropy loss
+model.compile(optimizer="adam", loss="categorical_crossentropy", metrics=["accuracy"])
+
+# ------------------ Training the Model ------------------
+# Train the model for 10 epochs with a batch size of 128 and use 10% of training data for validation
+history = model.fit(x_train, y_train, epochs=10, batch_size=128, validation_split=0.1)
+
+# Evaluate the model on the test set
+test_loss, test_accuracy = model.evaluate(x_test, y_test)
+print("Test accuracy:", test_accuracy)
+
+# Save the trained model to disk for future use
+model.save("digit_recognition_model.h5")
+
+# ------------------ Optional: Predict a New Handwritten Digit ------------------
+def predict_digit(image_path):
+    """
+    Loads an image file, processes it, and uses the trained model to predict the digit.
+    The image should be in grayscale; if it is not, it will be converted.
+    """
+    # Read the image from the given path in grayscale mode
+    img = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
+    if img is None:
+        print("Error: Unable to load image from", image_path)
+        return
+
+    # Resize the image to 28 x 28 pixels (the required input size for the model)
+    img_resized = cv2.resize(img, (28, 28))
+    
+    # OPTIONAL: Invert image colors if the digit is dark on a light background.
+    # Uncomment the following line if needed:
+    # img_resized = cv2.bitwise_not(img_resized)
+    
+    # Normalize the image and reshape it to (1, 28, 28, 1)
+    img_normalized = img_resized.astype("float32") / 255.0
+    img_input = np.expand_dims(img_normalized, axis=0)   # shape becomes (1,28,28)
+    img_input = np.expand_dims(img_input, axis=-1)         # shape becomes (1,28,28,1)
+    
+    # Load the saved trained model
+    model = load_model("digit_recognition_model.h5")
+    
+    # Predict the digit using the model
+    prediction = model.predict(img_input)
+    predicted_digit = np.argmax(prediction)
+    print("Predicted digit is:", predicted_digit)
+    
+    # Display the image with the prediction as the title
+    plt.imshow(img_resized, cmap="gray")
+    plt.title(f"Predicted Digit: {predicted_digit}")
+    plt.axis("off")
+    plt.show()
+
+# Uncomment the following line and replace 'your_digit_image.png' with your image's path to test prediction:
+# predict_digit("your_digit_image.png")
